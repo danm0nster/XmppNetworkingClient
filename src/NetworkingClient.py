@@ -1,7 +1,7 @@
 import xmpp
 import sys
 import time
-import multiprocessing
+import threading
 
 
 class NetworkingClient:
@@ -13,8 +13,8 @@ class NetworkingClient:
         self.client = xmpp.Client
         self.msg_handler = None
         self.listening_process = None
-        self.stop_all_processes = multiprocessing.Value('i', 0)
-        self.lock = multiprocessing.Lock()
+        self.stop_all_processes = False
+        self.lock = threading.RLock()
 
     def set_credentials(self, jid=None, username=None, domain=None, resource=None, secret=None):
         if jid is not None:
@@ -63,16 +63,13 @@ class NetworkingClient:
         self.client.RegisterHandler("message", self.on_message)
 
     def disconnect(self):
-        # Stop any spawned listener threads
-        self.lock.acquire(block=True)
-        self.stop_all_processes.value = 1
+        self.lock.acquire()
+        self.stop_all_processes = True
         self.lock.release()
         # sleeping 1 sec before disconnect, this removes errors that can happen on older servers
         time.sleep(1)
         self.client.disconnect()
         print "disconnected"
-        # Forcing processes to close if not yet terminated
-        #self.listening_process.terminate()
 
     # TODO timestamp/time-to-live for discarding old messages
     def send_message(self, to, message="", subject=""):
@@ -97,19 +94,20 @@ class NetworkingClient:
         self.msg_handler = function
 
     def _listen(self, timeout=1):
-        self.lock.acquire(block=True)
-        stopped = self.stop_all_processes.value
+        print "entering_ listen"
+        self.lock.acquire()
+        stopped = self.stop_all_processes
         self.lock.release()
-        while stopped is not 1:
+        while stopped is not True:
             self.client.Process(timeout)
             time.sleep(0.3)
-            self.lock.acquire(block=True)
-            stopped = self.stop_all_processes.value
+            self.lock.acquire()
+            stopped = self.stop_all_processes
             self.lock.release()
             print "Listening loop, stop signal is: ", stopped
 
     def start_listening(self):
-        self.listening_process = multiprocessing.Process(target=self._listen)
-        print "preparing to spawn listening process, current pid: ", str(self.listening_process.pid)
-        self.listening_process.start()
-        print "process started, current pid: ", str(self.listening_process.pid)
+        thread = self.listening_process = threading.Thread(target=self._listen)
+        thread.setDaemon(True)
+        thread.start()
+        print "starting new thread"
