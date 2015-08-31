@@ -33,7 +33,6 @@ class NetworkingClient:
         # step 1
         if self.server is not None:
             # TODO client debug flag
-            # port?
             self.client = xmpp.Client(server=self.server, port=self.port, debug=[])
             con = self.client.connect(server=(self.server, self.port))
             if not con:
@@ -47,7 +46,7 @@ class NetworkingClient:
                 # step 3
                 self.client.sendInitPresence()
                 # step 4
-                self.register_handlers()
+                self._register_handlers()
 
     def authenticate(self):
         if self.jid is not None:
@@ -58,8 +57,7 @@ class NetworkingClient:
             else:
                 print "authenticated using: " + auth
 
-    def register_handlers(self):
-        print "handler registered"
+    def _register_handlers(self):
         self.client.RegisterHandler("message", self.on_message)
 
     def disconnect(self):
@@ -72,10 +70,11 @@ class NetworkingClient:
         print "disconnected"
 
     # TODO timestamp/time-to-live for discarding old messages
-    def send_message(self, to, message="", subject=""):
+    def send_message(self, to, sender, message="", subject=""):
         msg = xmpp.Message()
         if to is not None and to != "":
             msg.setTo(to)
+            msg.setFrom(sender)
             msg.setBody(message)
             msg.setSubject(subject)
             if self.client.connected:
@@ -84,17 +83,22 @@ class NetworkingClient:
             # TODO exception on wrong to parameter
             pass
 
+    # TODO check on recipientList er en liste
+    def send_mass_messages(self, recipientList, sender, message="", subject=""):
+        for s in recipientList:
+            self.send_message(to=s, sender=sender, message=message, subject=subject)
+
     # raises TypeError exception if handlers aren't setup properly
     def on_message(self, client, msg):
         # TODO checking message type and dealing with them, f.x. if msg.type == "chat" do x
-        self.msg_handler(msg, 1234)
+        self.msg_handler(msg)
 
     # TODO might need a generic add handler method, to support building addons
     def register_message_handler(self, function, *args):
         self.msg_handler = function
 
     def _listen(self, timeout=1):
-        print "entering_ listen"
+        print "entering listen method"
         self.lock.acquire()
         stopped = self.stop_all_processes
         self.lock.release()
@@ -104,10 +108,12 @@ class NetworkingClient:
             self.lock.acquire()
             stopped = self.stop_all_processes
             self.lock.release()
-            print "Listening loop, stop signal is: ", stopped
 
     def start_listening(self):
+        print "starting new thread"
         thread = self.listening_process = threading.Thread(target=self._listen)
         thread.setDaemon(True)
         thread.start()
-        print "starting new thread"
+
+    def id(self):
+        return str(self.jid)
