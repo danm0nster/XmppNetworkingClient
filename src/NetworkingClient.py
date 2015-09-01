@@ -94,8 +94,8 @@ class NetworkingClient:
         self.msg_handler(msg)
 
     # TODO might need a generic add handler method, to support building addons
-    def register_message_handler(self, function, *args):
-        self.msg_handler = function
+    def register_message_handler(self, object):
+        self.msg_handler = object.message_received
 
     def _listen(self, timeout=1):
         print "entering listen method"

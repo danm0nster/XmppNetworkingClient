@@ -1,108 +1,137 @@
 from NetworkingClient import NetworkingClient
+from multiprocessing import Value
+import threading
 import time
 
-clientType = "trustfund"
-username = 'test2'
-domain = 'YLGW036484'
-server = "server@YLGW036484"
-client_state = "wait"
-money_per_round = 100.0
-money_invested_this_round = 0.0
-total_money = 0.0
-investment_received = 0.0
-investment_multiplier = 3.0
 
+class TestClient:
+    def __init__(self):
+        self.clientType = "trustfund"
+        self.username = 'test1'
+        self.domain = 'YLGW036484'
+        self.server = "server@YLGW036484"
+        self.client_state = "wait"
+        self.lock = threading.RLock()
+        self.money_per_round = Value('f', 100.0)
+        self.money_invested_this_round = Value('f', 0.0)
+        self.total_money = Value('f', 0.0)
+        self.investment_received = Value('f', 0.0)
+        self.investment_multiplier = Value('f', 3.0)
 
-# limit how far it looks for commands
-def message_received(msg):
-    # making variables global to access them from thread
-    # TODO don't use globals
-    global client_state
-    global clientType
-    global investment_received
-    global investment_received
-    global total_money
-    # only respond to messages from "server client"
-    if msg.getFrom() == "server@ylgw036484/Test Server":
-        msg_body = msg.getBody()
-        if msg_body.find("--paired:") is not -1:
-            print "Now trading with: " + msg_body.lstrip("--paired:")
+        self.client = NetworkingClient(server='YLGW036484', port=5222)
+        self.client.set_credentials(username=self.username, domain=self.domain, secret='1234', resource='Test Server')
+        self.client.connect()
+        self.client.register_message_handler(self)
+        self.client.start_listening()
+        self.client.send_message(to=self.server, sender=self.client.id(), message="--register:"+self.clientType)
 
-        if msg_body.find("--state:invest") is not -1 and clientType == "investor":
-            client_state = "investor_invest"
+    # limit how far it looks for commands
+    def message_received(self, msg):
+        # only respond to messages from "server client"
+        # TODO less hardcode on the line under
+        if msg.getFrom() == "server@ylgw036484/Test Server":
+            msg_body = msg.getBody()
+            # Checking pairing
+            if msg_body.find("--paired:") is not -1:
+                print "Now trading with: " + msg_body.lstrip("--paired:")
+                return
 
-        if msg_body.find("--invested:") is not -1 and clientType == "trustfund":
-            investment_received = 0.0
-            investment_received = float(msg_body.lstrip("--invested:"))
+            # signal to start investing, if you are an investor
+            if msg_body.find("--state:invest") is not -1 and self.clientType == "investor":
+                self.lock.acquire()
+                self.client_state = "investor_invest"
+                self.lock.release()
+                return
 
-        if msg_body.find("--trustfundStart")is not -1:
-            client_state = "trustfund_invest"
+            # Message informing amount invested by investor
+            if msg_body.find("--invested:") is not -1 and self.clientType == "trustfund":
+                self.investment_received.value = 0.0
+                self.investment_received.value = float(msg_body.lstrip("--invested:"))
+                return
 
-        if msg_body.find("--payment") is not -1 and clientType == "investor":
-            print "You received: " + msg_body.lstrip("--payment:") + " from: " + str(msg.getFrom())
-            total_money += float(msg_body.lstrip("--payment:"))
-            print "Your total sum of money is: " + str(total_money)
-            client_state = "wait"
+            # Start signal for trust funds
+            if msg_body.find("--trustfundStart")is not -1:
+                self.lock.acquire()
+                self.client_state = "trustfund_invest"
+                self.lock.release()
+                return
 
+            # Investor notified of money made
+            if msg_body.find("--payment") is not -1 and self.clientType == "investor":
+                print "You received: " + msg_body.lstrip("--payment:") + " from: " + str(msg.getFrom())
+                self.total_money.value = self.total_money.value +  float(msg_body.lstrip("--payment:"))
+                print "Your total sum of money is: " + str(self.total_money.value)
+                self.lock.acquire()
+                self.client_state = "wait"
+                self.lock.release()
+                return
+
+    def run(self):
+        self.lock.acquire()
+        state_snapshot = self.client_state
+        self.lock.release()
+        while state_snapshot != "stop":
+            # if investor and investing state, try getting number until successful
+            if state_snapshot == "investor_invest" and self.clientType == "investor":
+                self.lock.acquire()
+                invest_percentage = 0
+                # sanitizing input
+                while True:
+                    try:
+                        invest_percentage = int(raw_input("Please enter percentage"
+                                                          " to invest (must be between 0 and 100): "))
+                        if invest_percentage not in range(0, 101):
+                            print "must be a number between 0 and 100"
+                        else:
+                            break
+                    except ValueError:
+                        print "That's not a number and you know it ;)"
+
+                # calculates how much money to send and how much to keep
+                self.money_invested_this_round.value = self.money_per_round.value * (float(invest_percentage)/100.0)
+                self.total_money.value = self.total_money.value + self.money_per_round.value - self.money_invested_this_round.value
+                # sending message with amount for trust fund
+                temptest = self.money_invested_this_round.value
+                self.client.send_message(to=self.server, sender=self.client.id(), message="--invest:"+str(temptest))
+                print "you have invested: ", self.money_invested_this_round.value
+                print "you have kept: ", (self.money_per_round.value - self.money_invested_this_round.value)
+                self.money_invested_this_round.value = 0.0
+                self.client_state = "wait"
+                self.lock.release()
+
+            # trust funds got investment from investor
+            if state_snapshot == "trustfund_invest" and self.clientType == "trustfund":
+                self.lock.acquire()
+                self.investment_received.value = self.investment_received.value * self.investment_multiplier.value
+                print "You received: " + str(self.investment_received.value)
+                print "The investor shared: " + str(self.investment_received.value / (self.money_per_round.value * self.investment_multiplier.value) * 100.0) \
+                      + "% of his money"
+                # sanitizing input, by making the input into an int, catching a ValueError if it can't
+                # then checking if the variable is within the amount wanted. Breaks out on valid input
+                invest_percentage = 0
+                while True:
+                    try:
+                        invest_percentage = int(raw_input("Please enter what percentage you "
+                                                          "want to share (must be between 0 and 100): "))
+                        if invest_percentage not in range(0, 101):
+                            print "must be a number between 0 and 100"
+                        else:
+                            break
+                    except ValueError:
+                        pass
+                money_earned = self.investment_received.value * (1-(float(invest_percentage)/100.0))
+                self.total_money.value = self.total_money.value + money_earned
+                print "You earned: " + str(money_earned) + " from that investment"
+                print "Your total money is: " + str(self.total_money.value)
+                # sends message with amount for the investor
+                self.client.send_message(to=self.server, sender=self.client.id(), message="--trustfundPay:"+str(self.investment_received.value-money_earned))
+                self.client_state = "wait"
+                self.lock.release()
+            time.sleep(0.5)
+            self.lock.acquire()
+            state_snapshot = self.client_state
+            self.lock.release()
 
 if __name__ == '__main__':
-    client = NetworkingClient(server='YLGW036484', port=5222)
-    client.set_credentials(username=username, domain=domain, secret='1234', resource='Test Server')
-    client.connect()
-    client.register_message_handler(message_received)
-    client.start_listening()
-    client.send_message(to=server, sender=client.id(), message="--register:"+clientType)
-
-    while client_state != "stop":
-        # if investor and investing state, try getting number until successful
-        if client_state == "investor_invest" and clientType == "investor":
-            invest_percentage = 0
-            # sanitizing input
-            while True:
-                try:
-                    invest_percentage = int(raw_input("Please enter percentage to invest (must be between 0 and 100): "))
-                    if invest_percentage not in range(0, 101):
-                        print "must be a number between 0 and 100"
-                    else:
-                        break
-                except ValueError:
-                    print "That's not a number and you know it ;)"
-
-            # calculates how much money to send and how much to keep
-            money_invested_this_round = money_per_round * (float(invest_percentage)/100.0)
-            total_money = total_money + money_per_round - money_invested_this_round
-            # sending message with amount for trust fund
-            client.send_message(to=server, sender=client.id(), message="--invest:"+str(money_invested_this_round))
-            print "you have invested: ", money_invested_this_round
-            print "you have kept: ", (money_per_round - money_invested_this_round)
-            money_invested_this_round = 0.0
-            client_state = "wait"
-
-        # trust funds got investment from investor
-        if client_state == "trustfund_invest" and clientType == "trustfund":
-            investment_received *= investment_multiplier
-            print "You received: " + str(investment_received)
-            print "The investor shared: " + str(investment_received / (money_per_round * investment_multiplier) * 100.0) \
-                  + "% of his money"
-            # sanitizing input, by making the input into an int, catching a ValueError if it can't
-            # then checking if the variable is within the amount wanted. Breaks out on valid input
-            while True:
-                try:
-                    invest_percentage = int(raw_input("Please enter what percentage you "
-                                                      "want to share (must be between 0 and 100): "))
-                    if invest_percentage not in range(0, 101):
-                        print "must be a number between 0 and 100"
-                    else:
-                        break
-                except ValueError:
-                    pass
-            money_earned = total_money + investment_received * (1-(float(invest_percentage)/100.0))
-            total_money += money_earned
-            print "You earned: " + str(money_earned) + " from that investment"
-            print "Your total money is: " + str(total_money)
-            # sends message with amount for the investor
-            client.send_message(to=server, sender=client.id(), message="--trustfundPay:"
-                                                                       + str(investment_received - money_earned))
-            money_earned = 0.0
-            client_state = "wait"
-        time.sleep(0.5)
+    test_client = TestClient()
+    test_client.run()
