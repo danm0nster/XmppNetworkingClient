@@ -2,7 +2,8 @@ import xmpp
 import sys
 import time
 import threading
-
+import multiprocessing
+import Queue
 
 class NetworkingClient:
     def __init__(self, server="", port=5222):
@@ -14,8 +15,12 @@ class NetworkingClient:
         self.msg_handler = None
         self.listening_process = None
         self.stop_all_processes = False
-        self.lock = threading.RLock()
+        self.lock = multiprocessing.RLock()
 
+        #### vars for blocking
+        self.messages = Queue.Queue()
+
+    # TODO check if valid jid?
     def set_credentials(self, jid=None, username=None, domain=None, resource=None, secret=None):
         if jid is not None:
             pass
@@ -58,7 +63,7 @@ class NetworkingClient:
                 print "authenticated using: " + auth
 
     def _register_handlers(self):
-        self.client.RegisterHandler("message", self.on_message)
+        self.client.RegisterHandler("message", self.blocking_on_message)
 
     def disconnect(self):
         self.lock.acquire()
@@ -77,6 +82,7 @@ class NetworkingClient:
             msg.setFrom(sender)
             msg.setBody(message)
             msg.setSubject(subject)
+            msg.setID(1)
             if self.client.connected:
                 self.client.send(msg)
         else:
@@ -91,11 +97,13 @@ class NetworkingClient:
     # raises TypeError exception if handlers aren't setup properly
     def on_message(self, client, msg):
         # TODO checking message type and dealing with them, f.x. if msg.type == "chat" do x
+        self.lock.acquire()
         self.msg_handler(msg)
+        self.lock.release()
 
     # TODO might need a generic add handler method, to support building addons
-    def register_message_handler(self, object):
-        self.msg_handler = object.message_received
+    def register_message_handler(self, obj):
+        self.msg_handler = obj.message_received
 
     def _listen(self, timeout=1):
         print "entering listen method"
@@ -111,9 +119,36 @@ class NetworkingClient:
 
     def start_listening(self):
         print "starting new thread"
-        thread = self.listening_process = threading.Thread(target=self._listen)
+        thread = threading.Thread(target=self._listen)
         thread.setDaemon(True)
         thread.start()
 
     def id(self):
         return str(self.jid)
+ ##########################Stuff for blocking########################################
+
+    def _blocking_listen(self, timeout=1.0):
+        print "entering listen method"
+        # TODO remove busy waiting
+        while True:
+            self.client.Process(timeout)
+
+    def blocking_listen_start(self):
+        print "spawning process"
+        thread = threading.Thread(target=self._blocking_listen)
+        thread.setDaemon(True)
+        thread.start()
+
+    def blocking_on_message(self, dispatcher, msg):
+        self.lock.acquire()
+        self.messages.put(msg)
+        self.lock.release()
+
+    def block_check_for_messages(self):
+        self.lock.acquire()
+        result = not self.messages.empty()
+        self.lock.release()
+        return result
+
+    def block_pop_message(self):
+        return self.messages.get()

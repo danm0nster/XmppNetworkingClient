@@ -3,6 +3,7 @@ import threading
 import random
 import time
 
+
 class TestServer:
     def __init__(self):
         self.investor_list = []
@@ -22,6 +23,7 @@ class TestServer:
     def message_received(self, msg):
         # event for investors to register on the server
         msg_body = msg.getBody()
+        print "Message:\t\t" + msg_body
         if msg_body.find("--register:invest") is not -1:
             self.lock.acquire()
             if msg.getFrom() not in self.investor_list:
@@ -64,8 +66,15 @@ class TestServer:
         # pairs people up and use a dictionary to keep track of the pairs
         self.lock.acquire()
         # TODO shuffle the list
+        # making sure pairings are cleared
+        self.invest_trustfund_pairing = {}
+        # shuffling lists to get random pairings
+        random.shuffle(self.investor_list)
+        random.shuffle(self.trustfund_list)
         for trustfund, investor in zip(self.trustfund_list, self.investor_list):
             self.invest_trustfund_pairing[investor] = trustfund
+        for key in self.invest_trustfund_pairing:
+            print key, "matched with,", self.invest_trustfund_pairing[key], "\n"
         self.lock.release()
 
         self.lock.acquire()
@@ -80,11 +89,14 @@ class TestServer:
             self.client.send_message(to=tru, sender=reci, message=truStr)
         self.lock.release()
 
-        # send start signal to all investors
+        # send start signal to all investors who got paired
         self.lock.acquire()
-        self.client.send_mass_messages(recipientList=self.investor_list, sender=self.client.id(), message="--state:invest")
+        for investor in self.invest_trustfund_pairing:
+            self.client.send_message(to=investor, sender=self.client.id(), message="--state:invest")
+            # self.client.send_mass_messages(recipientList=self.investor_list, sender=self.client.id(), message="--state:invest")
         self.lock.release()
 
+        # waiting for next stage to come through a state change
         self.lock.acquire()
         state_snapshot = self.server_state
         self.lock.release()
@@ -93,6 +105,7 @@ class TestServer:
             self.lock.acquire()
             state_snapshot = self.server_state
             self.lock.release()
+
         # sending investment information to trust fund
         self.lock.acquire()
         for investor in self.invest_trustfund_pairing:
@@ -100,15 +113,19 @@ class TestServer:
             message = "--invested:" + self.response_dict[investor]
             self.client.send_message(to=trustfund, sender=self.client.id(), message=message)
         self.lock.release()
+
         # cleanup
         self.lock.acquire()
         self.server_state = "wait"
         # clearing responses to use the same dict for trust fund responses
         self.response_dict = {}
         self.lock.release()
-        # send start signal to all trust funds
+
+        # send start signal to all trust funds, which is paired with an investor
         self.lock.acquire()
-        self.client.send_mass_messages(recipientList=self.trustfund_list, sender=self.client.id(), message="--trustfundStart")
+        for investor in self.invest_trustfund_pairing:
+            self.client.send_message(to=self.invest_trustfund_pairing[investor], sender=self.client.id(), message="--trustfundStart")
+            #self.client.send_mass_messages(recipientList=self.trustfund_list, sender=self.client.id(), message="--trustfundStart")
         self.lock.release()
 
         # waiting for response from all trust funds

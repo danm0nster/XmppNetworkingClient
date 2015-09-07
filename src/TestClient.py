@@ -7,9 +7,6 @@ import time
 class TestClient:
     def __init__(self):
         self.clientType = "trustfund"
-        self.username = 'test1'
-        self.domain = 'YLGW036484'
-        self.server = "server@YLGW036484"
         self.client_state = "wait"
         self.lock = threading.RLock()
         self.money_per_round = Value('f', 100.0)
@@ -18,7 +15,13 @@ class TestClient:
         self.investment_received = Value('f', 0.0)
         self.investment_multiplier = Value('f', 3.0)
 
-        self.client = NetworkingClient(server='YLGW036484', port=5222)
+        # connection variables
+        self.username = 'test3'
+        self.domain = 'YLGW036484'
+        self.server = "server@YLGW036484"
+        self.port = 5222
+
+        self.client = NetworkingClient(server=self.domain, port=self.port)
         self.client.set_credentials(username=self.username, domain=self.domain, secret='1234', resource='Test Server')
         self.client.connect()
         self.client.register_message_handler(self)
@@ -28,8 +31,7 @@ class TestClient:
     # limit how far it looks for commands
     def message_received(self, msg):
         # only respond to messages from "server client"
-        # TODO less hardcode on the line under
-        if msg.getFrom() == "server@ylgw036484/Test Server":
+        if str(msg.getFrom()).find(self.server.lower()) is not -1:
             msg_body = msg.getBody()
             # Checking pairing
             if msg_body.find("--paired:") is not -1:
@@ -91,8 +93,9 @@ class TestClient:
                 self.money_invested_this_round.value = self.money_per_round.value * (float(invest_percentage)/100.0)
                 self.total_money.value = self.total_money.value + self.money_per_round.value - self.money_invested_this_round.value
                 # sending message with amount for trust fund
-                temptest = self.money_invested_this_round.value
-                self.client.send_message(to=self.server, sender=self.client.id(), message="--invest:"+str(temptest))
+                # TODO testMsg fjernelse
+                testMsg = self.client.send_message(to=self.server, sender=self.client.id(), message="--invest:"+str(self.money_invested_this_round.value))
+                print "Message sent\t\t", testMsg
                 print "you have invested: ", self.money_invested_this_round.value
                 print "you have kept: ", (self.money_per_round.value - self.money_invested_this_round.value)
                 self.money_invested_this_round.value = 0.0
@@ -124,7 +127,9 @@ class TestClient:
                 print "You earned: " + str(money_earned) + " from that investment"
                 print "Your total money is: " + str(self.total_money.value)
                 # sends message with amount for the investor
-                self.client.send_message(to=self.server, sender=self.client.id(), message="--trustfundPay:"+str(self.investment_received.value-money_earned))
+                # TODO debug testMsg
+                testMsg = self.client.send_message(to=self.server, sender=self.client.id(), message="--trustfundPay:"+str(self.investment_received.value-money_earned))
+                print "Message sent\t\t", testMsg
                 self.client_state = "wait"
                 self.lock.release()
             time.sleep(0.5)
