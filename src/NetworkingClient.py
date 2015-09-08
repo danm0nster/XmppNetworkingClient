@@ -82,9 +82,9 @@ class NetworkingClient:
             msg.setFrom(sender)
             msg.setBody(message)
             msg.setSubject(subject)
-            msg.setID(1)
             if self.client.connected:
-                self.client.send(msg)
+                return self.client.send(msg)
+
         else:
             # TODO exception on wrong to parameter
             pass
@@ -134,15 +134,13 @@ class NetworkingClient:
             self.client.Process(timeout)
 
     def blocking_listen_start(self):
-        print "spawning process"
+        print "spawning thread"
         thread = threading.Thread(target=self._blocking_listen)
         thread.setDaemon(True)
         thread.start()
 
     def blocking_on_message(self, dispatcher, msg):
-        self.lock.acquire()
         self.messages.put(msg)
-        self.lock.release()
 
     def block_check_for_messages(self):
         self.lock.acquire()
@@ -151,4 +149,7 @@ class NetworkingClient:
         return result
 
     def block_pop_message(self):
-        return self.messages.get()
+        self.lock.acquire()
+        temp = self.messages.get()
+        self.lock.release()
+        return temp

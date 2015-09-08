@@ -33,6 +33,17 @@ class BlockingServer:
                 return True
         return False
 
+    def message_handler(self, msg):
+        if msg.getBody().find('--register') is not -1:
+            if msg.getBody().find('--register:investor') is not -1:
+                print "adding investor"
+                self.investor_list.append(msg.getFrom())
+            elif msg.getBody().find('register:trustfund') is not -1:
+                print "adding trustfund"
+                self.trust_fund_list.append(msg.getFrom())
+            if len(self.investor_list) + len(self.trust_fund_list) == 4:
+                self.state = 'running'
+
     def game_round(self):
         # handling signup messages until start signal is given
         while self.state == "signup":
@@ -49,6 +60,7 @@ class BlockingServer:
                     self.trust_fund_list.append(msg.getFrom())
                 # my start condition, in this case it's the number of players
                 if len(self.investor_list) + len(self.trust_fund_list) == 4:
+                    print 'state change: pairing'
                     self.state = "pairing"
             time.sleep(0.1)
 
@@ -71,6 +83,7 @@ class BlockingServer:
             for investor in self.investor_trust_fund_pairing:
                 self.network.send_message(to=investor, sender=self.network.id(), message='--invest:start')
             # changing server state to wait for responses
+            print 'state change: wait_after_pairing'
             self.state = "wait"
 
         # clearing the response dictionary before use
@@ -88,6 +101,7 @@ class BlockingServer:
                     print investor, 'invested: ', investment
                     # when all investors have responded change state
                     if self._have_all_responses(self.response_dict):
+                        print 'state change: notify trustfunds'
                         self.state = 'notify trustfunds'
             time.sleep(0.1)
 
@@ -98,7 +112,9 @@ class BlockingServer:
             for investor in self.response_dict:
                 trust_fund = self.investor_trust_fund_pairing[investor]
                 self.network.send_message(to=trust_fund, sender=self.network.id(), message='--investment:'+self.response_dict[investor])
+            print 'state change: trustfunds_shared'
             self.state = 'trustfunds_shared'
+            time.sleep(0.1)
 
         #clearing response dict for reuse
         self.response_dict = {}
@@ -116,15 +132,16 @@ class BlockingServer:
                         print 'received all responses, sending payment to investors'
                         for investor in self.response_dict:
                             self.network.send_message(to=investor, sender=self.network.id(), message='--trustfund_pay:'+self.response_dict[investor])
-                        self.state = 'done'
-
-
-
-
-
+                        print 'state change: back to pairing'
+                        self.state = 'pairing'
+            time.sleep(0.1)
 
 if __name__ == "__main__":
     server = BlockingServer()
+    server.game_round()
+    server.game_round()
+    server.game_round()
+    server.game_round()
     server.game_round()
 
     raw_input()

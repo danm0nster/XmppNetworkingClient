@@ -31,10 +31,6 @@ class BlockingClient:
                 msg = self.network.block_pop_message()
                 if msg.getBody().find('--paired:') is not -1:
                     print 'Paired with ' + msg.getBody().lstrip('--paired:')
-                    if self.client_type == 'trustfund':
-                        self.state = 'trustfund ready'
-                    elif self.client_type == 'investor' and msg.getBody().find('--invest:start') is not -1:
-                        self.state == 'invest'
 
                 # if selected and investor, starting up investment process
                 if self.client_type == 'investor' and msg.getBody().find('--invest:start') is not -1:
@@ -53,13 +49,13 @@ class BlockingClient:
                     # notify server of investment
                     print 'You have invested: ', self.money_per_round * float(invest_percentage/100.0)
                     print 'You have kept: ', self.money_per_round - self.money_per_round * float(invest_percentage/100.0)
-                    self.total_money = self.money_per_round - self.money_per_round * float(invest_percentage/100.0)
+                    self.total_money = self.total_money + self.money_per_round - self.money_per_round * float(invest_percentage/100.0)
                     self.network.send_message(to=self.server, sender=self.network.id(), message='--investor:invest'+str(self.money_per_round*float(invest_percentage/100.0)))
 
                 # investor waiting for response from trust fund
                 if self.client_type == 'investor' and msg.getBody().find('--trustfund_pay:') is not -1:
                     payment = float(msg.getBody().lstrip('--trustfund_pay:'))
-                    print 'Trustfund payment of ', payment
+                    print 'Trustfund payment of: ', payment
                     self.total_money += payment
                     print 'Your total amount of money is: ', self.total_money
 
@@ -71,7 +67,7 @@ class BlockingClient:
                     print "The invester shared " + str(investment_received / (self.money_per_round * self.trust_fund_multiplication) * 100.0) + '% of his money'
                     while True:
                         try:
-                            invest_percentage = int(raw_input('Enter what percentage you wish to split with the investor'))
+                            invest_percentage = int(raw_input('Enter what percentage you wish to split with the investor: '))
                             if invest_percentage not in range(0, 101):
                                 print 'Must be a number between 0 and 100'
                             else:
@@ -80,13 +76,10 @@ class BlockingClient:
                             print "That is not a number and you know it ;)"
                     money_shared = investment_received * float(invest_percentage) / 100.0
                     self.total_money = self.total_money + investment_received - money_shared
-                    print 'du har nu: ' + str(self.total_money)
-                    print 'du har delt: ', money_shared
+                    print 'Your total amount of money is: ' + str(self.total_money)
+                    print 'You shared: ', money_shared
                     self.network.send_message(to=self.server, sender=self.network.id(), message='--trustfund_pay:'+str(money_shared))
-                    self.state = 'wait'
-            # TODO delete, only here temporarily for test purposes
-            self.state = 'wait'
-            time.sleep(2)
+            time.sleep(0.1)
 
 
 if __name__ == "__main__":
