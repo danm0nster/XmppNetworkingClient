@@ -5,6 +5,7 @@ import threading
 import multiprocessing
 import Queue
 
+
 class NetworkingClient:
     def __init__(self, server="", port=5222):
         self.server = server
@@ -90,8 +91,8 @@ class NetworkingClient:
             pass
 
     # TODO check on recipientList er en liste
-    def send_mass_messages(self, recipientList, sender, message="", subject=""):
-        for s in recipientList:
+    def send_mass_messages(self, recipient_list, sender, message="", subject=""):
+        for s in recipient_list:
             self.send_message(to=s, sender=sender, message=message, subject=subject)
 
     # raises TypeError exception if handlers aren't setup properly
@@ -143,13 +144,9 @@ class NetworkingClient:
         self.messages.put(msg)
 
     def block_check_for_messages(self):
-        self.lock.acquire()
         result = not self.messages.empty()
-        self.lock.release()
         return result
 
     def block_pop_message(self):
-        self.lock.acquire()
-        temp = self.messages.get()
-        self.lock.release()
-        return temp
+        result = self.messages.get()
+        return result

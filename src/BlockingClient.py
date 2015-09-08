@@ -5,12 +5,12 @@ import time
 class BlockingClient:
     def __init__(self):
         # connection variables
-        self.username = 'test1'
-        self.domain = 'YLGW036484'
-        self.server = "server@YLGW036484"
+        self.username = 'test4'
+        self.domain = 'YLGW036449'
+        self.server = "server@YLGW036449"
         self.port = 5222
 
-        self.client_type = "investor"
+        self.client_type = "trustfund"
         self.state = "wait"
         self.money_per_round = 100.0
         self.total_money = 0.0
@@ -35,7 +35,7 @@ class BlockingClient:
                 # if selected and investor, starting up investment process
                 if self.client_type == 'investor' and msg.getBody().find('--invest:start') is not -1:
                     print 'You get ', self.money_per_round, 'to invest, or keep'
-                    invest_percentage = 0
+                    invest_percentage = 50
                     # getting input from user, breaking out of loop when input is valid
                     while True:
                         try:
@@ -63,6 +63,7 @@ class BlockingClient:
                 if self.client_type == 'trustfund' and msg.getBody().find('--investment:') is not -1:
                     investment_received = float(msg.getBody().lstrip('--investment:'))
                     investment_received *= self.trust_fund_multiplication
+                    invest_percentage = 50
                     print "Received investment of: ", investment_received
                     print "The invester shared " + str(investment_received / (self.money_per_round * self.trust_fund_multiplication) * 100.0) + '% of his money'
                     while True:
@@ -80,7 +81,6 @@ class BlockingClient:
                     print 'You shared: ', money_shared
                     self.network.send_message(to=self.server, sender=self.network.id(), message='--trustfund_pay:'+str(money_shared))
             time.sleep(0.1)
-
 
 if __name__ == "__main__":
     client = BlockingClient()
