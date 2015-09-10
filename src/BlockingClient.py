@@ -2,15 +2,15 @@ from NetworkingClient import NetworkingClient
 import time
 
 
-class BlockingClient:
+class BlockingClient(object):
     def __init__(self):
         # connection variables
-        self.username = 'test4'
-        self.domain = 'YLGW036449'
-        self.server = "server@YLGW036449"
+        self.username = 'test1'
+        self.domain = 'YLGW036484'
+        self.server = "server@YLGW036484"
         self.port = 5222
 
-        self.client_type = "trustfund"
+        self.client_type = "investor"
         self.state = "wait"
         self.money_per_round = 100.0
         self.total_money = 0.0
@@ -20,15 +20,15 @@ class BlockingClient:
         self.network = NetworkingClient(server=self.domain, port=self.port)
         self.network.set_credentials(username=self.username, domain=self.domain, secret='1234', resource='Test Server')
         self.network.connect()
-        self.network.start_listening()
+        self.network.blocking_listen_start()
 
     def start_when_ready(self):
         # register with server
         self.network.send_message(to=self.server, sender=self.network.id(), message="--register:"+self.client_type)
         # wait for pairing info
         while self.state != 'exit':
-            if self.network.block_check_for_messages():
-                msg = self.network.block_pop_message()
+            if self.network.check_for_messages():
+                msg = self.network.pop_message()
                 if msg.getBody().find('--paired:') is not -1:
                     print 'Paired with ' + msg.getBody().lstrip('--paired:')
 

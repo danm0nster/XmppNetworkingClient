@@ -3,3 +3,5 @@ $ cat .gitignore
 *.pyc
 .project
 .pydevproject
+/docs
+/sphinx-docs

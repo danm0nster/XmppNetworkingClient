@@ -6,7 +6,7 @@ import multiprocessing
 import Queue
 
 
-class NetworkingClient:
+class NetworkingClient(object):
     def __init__(self, server="", port=5222):
         self.server = server
         self.port = port
@@ -23,8 +23,19 @@ class NetworkingClient:
 
     # TODO check if valid jid?
     def set_credentials(self, jid=None, username=None, domain=None, resource=None, secret=None):
+        """Sets the JID to be used for the class
+
+        if given a JID it will use that, otherwise it will create a new JID from the other given parameters
+
+        Args:
+            jid (jid): jid instance to use.
+            username (string): Username to create jid object.
+            domain (string): Domain for the jid object.
+            resource (string): Resource for the jid object.
+            secret (string): password for the jid.
+        """
         if jid is not None:
-            pass
+            self.jid = jid
         else:
             self.jid = xmpp.JID(node=username, domain=domain, resource=resource)
             self.secret = secret
@@ -64,19 +75,33 @@ class NetworkingClient:
                 print "authenticated using: " + auth
 
     def _register_handlers(self):
-        self.client.RegisterHandler("message", self.blocking_on_message)
+        self.client.RegisterHandler("message", self._on_message)
 
     def disconnect(self):
-        self.lock.acquire()
-        self.stop_all_processes = True
-        self.lock.release()
+        """Disconnects from the network
+
+        It will sleep for 1 second before calling for the disconnect, due to
+        compatibility with older xmpp servers
+        """
         # sleeping 1 sec before disconnect, this removes errors that can happen on older servers
         time.sleep(1)
         self.client.disconnect()
-        print "disconnected"
 
     # TODO timestamp/time-to-live for discarding old messages
     def send_message(self, to, sender, message="", subject=""):
+        """ Sends a message
+
+        message and subject is optional
+
+        Args:
+            to (jid): the jid of the recipient
+            sender (jid): jid of who sent it
+            message (string): message, defaults to the empty string
+            subject (string): subject, defaults to the empty string
+
+        Returns:
+            int: -1 if unsuccessful, message id if successful
+        """
         msg = xmpp.Message()
         if to is not None and to != "":
             msg.setTo(to)
@@ -85,52 +110,44 @@ class NetworkingClient:
             msg.setSubject(subject)
             if self.client.connected:
                 return self.client.send(msg)
-
-        else:
-            # TODO exception on wrong to parameter
-            pass
+        return -1
 
     # TODO check on recipientList er en liste
     def send_mass_messages(self, recipient_list, sender, message="", subject=""):
-        for s in recipient_list:
-            self.send_message(to=s, sender=sender, message=message, subject=subject)
+        """ Sends a message to many recipients
 
-    # raises TypeError exception if handlers aren't setup properly
-    def on_message(self, client, msg):
-        # TODO checking message type and dealing with them, f.x. if msg.type == "chat" do x
-        self.lock.acquire()
-        self.msg_handler(msg)
-        self.lock.release()
+        Sends a message to many recipients given a list of valid jids
+
+        Args:
+            recipient_list (list): List of recipients
+            sender (jid): Where the message is from
+            message (string): The message to be sent
+            subject (string): The subject of the message
+        """
+        try:
+            for s in recipient_list:
+                self.send_message(to=s, sender=sender, message=message, subject=subject)
+        except TypeError:
+            return -1
+        return 1
 
     # TODO might need a generic add handler method, to support building addons
     def register_message_handler(self, obj):
         self.msg_handler = obj.message_received
 
-    def _listen(self, timeout=1):
-        print "entering listen method"
-        self.lock.acquire()
-        stopped = self.stop_all_processes
-        self.lock.release()
-        while stopped is not True:
-            self.client.Process(timeout)
-            time.sleep(0.3)
-            self.lock.acquire()
-            stopped = self.stop_all_processes
-            self.lock.release()
-
-    def start_listening(self):
-        print "starting new thread"
-        thread = threading.Thread(target=self._listen)
-        thread.setDaemon(True)
-        thread.start()
-
     def id(self):
+        """ Returns the jid
+
+        Access to the jid you are currently logged in as
+
+        Returns:
+            jid: jid instance if it has been set, otherwise None
+        """
         return str(self.jid)
- ##########################Stuff for blocking########################################
 
     def _blocking_listen(self, timeout=1.0):
         print "entering listen method"
-        # TODO remove busy waiting
+        # TODO maybe remove busy waiting
         while True:
             self.client.Process(timeout)
 
@@ -140,13 +157,29 @@ class NetworkingClient:
         thread.setDaemon(True)
         thread.start()
 
-    def blocking_on_message(self, dispatcher, msg):
+    def _on_message(self, dispatcher, msg):
         self.messages.put(msg)
 
-    def block_check_for_messages(self):
+    def check_for_messages(self):
+        """Checks for messages
+
+        Returns:
+            bool: True if there are messages, False if there are no messages left
+        """
         result = not self.messages.empty()
         return result
 
-    def block_pop_message(self):
-        result = self.messages.get()
-        return result
+    def pop_message(self):
+        """returns the oldest message
+
+        pops a message from the underlying FIFO queue, thread safe.
+
+        Returns:
+            string: returns a message, None if there are no messages
+        """
+        try:
+            result = self.messages.get()
+        except Queue.Empty:
+            return None
+        else:
+            return result

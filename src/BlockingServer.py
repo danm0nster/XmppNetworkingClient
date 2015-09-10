@@ -3,28 +3,45 @@ import time
 import random
 
 
-class BlockingServer:
+class BlockingServer(object):
     def __init__(self):
-        # connection variables
+        # Username is the first part of the JID it will use
         self.username = 'server'
-        self.domain = 'YLGW036449'
-        self.server = "server@YLGW036449"
+        # Domain name of the server
+        self.domain = 'YLGW036484'
+        # Port number to connect to, 5222 is default
         self.port = 5222
 
+        # General Variables
         self.state = "signup"
         self.investor_list = []
         self.trust_fund_list = []
         self.response_dict = {}
         self.investor_trust_fund_pairing = {}
 
-        # connecting
+        # Making a new instance of the NetworkingClient, providing it with domain and port
         self.network = NetworkingClient(server=self.domain, port=self.port)
+        # Before connecting you have to give it connection credentials
         self.network.set_credentials(username=self.username, domain=self.domain, secret='1234', resource='Test Server')
+        # starts a connection but doesn't receive messages
         self.network.connect()
+        # You have to tell it to start listening for messages
         self.network.blocking_listen_start()
 
     # given a dictionary calculates if it has the same amount of entries as the shortest list of participant types
     def _have_all_responses(self, dict):
+        """Method to see if all responses have been received yet
+
+        It accomplishes this by comparing the length of the dictionary to the length of the
+        smallest list of participants.
+
+        Args:
+            dict: Instance of a dictionary containing responses
+
+        Returns:
+            True or False depending on result
+
+        """
         if len(self.investor_list) <= len(self.trust_fund_list):
             if len(dict) == len(self.investor_list):
                 return True
@@ -48,8 +65,8 @@ class BlockingServer:
         # handling signup messages until start signal is given
         while self.state == "signup":
             # check for new signup messages
-            if self.network.block_check_for_messages():
-                msg = self.network.block_pop_message()
+            if self.network.check_for_messages():
+                msg = self.network.pop_message()
                 # check if a investor registers
                 if msg.getBody().find('--register:investor') is not -1:
                     print "adding investor"
@@ -90,8 +107,8 @@ class BlockingServer:
         # TODO test prints
         print 'getting investments'
         while self.state == 'wait':
-            if self.network.block_check_for_messages():
-                msg = self.network.block_pop_message()
+            if self.network.check_for_messages():
+                msg = self.network.pop_message()
                 if msg.getBody().find('--investor:invest') is not -1:
                     investor = msg.getFrom()
                     investment = msg.getBody().lstrip('--investor:invest')
@@ -117,8 +134,8 @@ class BlockingServer:
         # notifying investors of received share from trust funds
         print 'sending responses to investors'
         while self.state == 'trustfunds_shared':
-            if self.network.block_check_for_messages():
-                msg = self.network.block_pop_message()
+            if self.network.check_for_messages():
+                msg = self.network.pop_message()
                 if msg.getBody().find('--trustfund_pay:') is not -1:
                     # switching keys and values in the pairing dictionary, to find the trust fund -> invester link
                     trustfund_pairing_dict = dict((tru, inv) for inv, tru in self.investor_trust_fund_pairing.iteritems())
