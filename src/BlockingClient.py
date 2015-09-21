@@ -10,7 +10,7 @@ class BlockingClient(object):
         self.server = "server@YLGW036484"
         self.port = 5222
 
-        self.client_type = "investor"
+        self.client_type = "trustfund"
         self.state = "wait"
         self.money_per_round = 100.0
         self.total_money = 0.0
@@ -18,12 +18,13 @@ class BlockingClient(object):
 
         # connecting
         self.network = NetworkingClient(server=self.domain, port=self.port)
-        self.network.set_credentials(username=self.username, domain=self.domain, secret='1234', resource='Test Server')
         self.network.connect()
-        self.network.blocking_listen_start()
+        self.network.authenticate(username=self.username, domain=self.domain, secret='1234', resource='Test Server')
+        self.network._start_listening()
 
     def start_when_ready(self):
         # register with server
+        self.network._roster.subscribe(username='server', domain=self.domain)
         self.network.send_message(to=self.server, sender=self.network.id(), message="--register:"+self.client_type)
         # wait for pairing info
         while self.state != 'exit':
