@@ -22,11 +22,10 @@ class BlockingServer(object):
         # Making a new instance of the NetworkingClient, providing it with domain and port
         self.network = NetworkingClient(server=self.domain, port=self.port)
         # starts a connection but doesn't receive messages
-        self.network.connect()
+        print 'connected with', self.network.connect()
         # logging in
-        self.network.authenticate(username=self.username, domain=self.domain, secret='1234', resource='Test Server')
-        # You have to tell it to start listening for messages
-        self.network._start_listening()
+        print 'authenticated with ', \
+            self.network.authenticate(username=self.username, domain=self.domain, secret='1234', resource='Test Server')
 
     # given a dictionary calculates if it has the same amount of entries as the shortest list of participant types
     def _have_all_responses(self, dict):
@@ -49,18 +48,6 @@ class BlockingServer(object):
             if len(dict) == len(self.trust_fund_list):
                 return True
         return False
-
-    # TODO Delete this
-    #def message_handler(self, msg):
-    #    if msg.getBody().find('--register') is not -1:
-    #        if msg.getBody().find('--register:investor') is not -1:
-    #            print "adding investor"
-    #            self.investor_list.append(msg.getFrom())
-    #        elif msg.getBody().find('register:trustfund') is not -1:
-    #            print "adding trustfund"
-    #            self.trust_fund_list.append(msg.getFrom())
-    #        if len(self.investor_list) + len(self.trust_fund_list) == 4:
-    #            self.state = 'running'
 
     def game_round(self):
         # handling signup messages until start signal is given

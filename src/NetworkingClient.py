@@ -361,7 +361,6 @@ class NetworkingClient(object):
 
         def _on_presence(self, dispatcher, pres):
             name = pres.getFrom()
-            print 'from: ', name, pres
 
             if pres.getType() is None:
                 self.roster._on_contact_online(name.getStripped())
@@ -404,7 +403,9 @@ class NetworkingClient(object):
             self.client = client
 
         def _on_iq(self, dispatcher, iq):
+            # gets all item elements from the query element
             items = iq.getTag('query').getTags('item')
+            # then iterates over the items
             for item in items:
                 jid = item.getAttr('jid')
                 if item.getAttr('subscription') == 'both':

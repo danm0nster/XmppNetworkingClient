@@ -5,12 +5,12 @@ import time
 class BlockingClient(object):
     def __init__(self):
         # connection variables
-        self.username = 'test1'
+        self.username = 'test4'
         self.domain = 'YLGW036484'
         self.server = "server@YLGW036484"
         self.port = 5222
 
-        self.client_type = "trustfund"
+        self.client_type = "investor"
         self.state = "wait"
         self.money_per_round = 100.0
         self.total_money = 0.0
@@ -18,13 +18,15 @@ class BlockingClient(object):
 
         # connecting
         self.network = NetworkingClient(server=self.domain, port=self.port)
-        self.network.connect()
-        self.network.authenticate(username=self.username, domain=self.domain, secret='1234', resource='Test Server')
-        self.network._start_listening()
+        con = self.network.connect()
+        if con == 'tls':
+            print 'connected with tls'
+        auth = self.network.authenticate(username=self.username, domain=self.domain, secret='1234', resource='Test Server')
+        if auth == 'sasl':
+            print 'authenticated with sasl'
 
     def start_when_ready(self):
         # register with server
-        self.network._roster.subscribe(username='server', domain=self.domain)
         self.network.send_message(to=self.server, sender=self.network.id(), message="--register:"+self.client_type)
         # wait for pairing info
         while self.state != 'exit':
