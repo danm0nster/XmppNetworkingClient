@@ -5,12 +5,12 @@ import time
 class BlockingClient(object):
     def __init__(self):
         # connection variables
-        self.username = 'test4'
-        self.domain = 'YLGW036484'
-        self.server = "server@YLGW036484"
+        self.username = 'test1'
+        self.domain = 'YLGW036487'
+        self.server = "server@YLGW036487"
         self.port = 5222
 
-        self.client_type = "investor"
+        self.client_type = "trustfund"
         self.state = "wait"
         self.money_per_round = 100.0
         self.total_money = 0.0
@@ -32,11 +32,11 @@ class BlockingClient(object):
         while self.state != 'exit':
             if self.network.check_for_messages():
                 msg = self.network.pop_message()
-                if msg.getBody().find('--paired:') is not -1:
-                    print 'Paired with ' + msg.getBody().lstrip('--paired:')
+                if msg.body.find('--paired:') is not -1:
+                    print 'Paired with ' + msg.body.lstrip('--paired:')
 
                 # if selected and investor, starting up investment process
-                if self.client_type == 'investor' and msg.getBody().find('--invest:start') is not -1:
+                if self.client_type == 'investor' and msg.body.find('--invest:start') is not -1:
                     print 'You get ', self.money_per_round, 'to invest, or keep'
                     invest_percentage = 50
                     # getting input from user, breaking out of loop when input is valid
@@ -56,22 +56,23 @@ class BlockingClient(object):
                     self.network.send_message(to=self.server, sender=self.network.id(), message='--investor:invest'+str(self.money_per_round*float(invest_percentage/100.0)))
 
                 # investor waiting for response from trust fund
-                if self.client_type == 'investor' and msg.getBody().find('--trustfund_pay:') is not -1:
-                    payment = float(msg.getBody().lstrip('--trustfund_pay:'))
+                if self.client_type == 'investor' and msg.body.find('--trustfund_pay:') is not -1:
+                    payment = float(msg.body.lstrip('--trustfund_pay:'))
                     print 'Trustfund payment of: ', payment
                     self.total_money += payment
                     print 'Your total amount of money is: ', self.total_money
 
                 # if selected trust fund, receive investment and decide how much to pay back
-                if self.client_type == 'trustfund' and msg.getBody().find('--investment:') is not -1:
-                    investment_received = float(msg.getBody().lstrip('--investment:'))
+                if self.client_type == 'trustfund' and msg.body.find('--investment:') is not -1:
+                    investment_received = float(msg.body.lstrip('--investment:'))
                     investment_received *= self.trust_fund_multiplication
                     invest_percentage = 50
                     print "Received investment of: ", investment_received
                     print "The invester shared " + str(investment_received / (self.money_per_round * self.trust_fund_multiplication) * 100.0) + '% of his money'
                     while True:
                         try:
-                            invest_percentage = int(raw_input('Enter what percentage you wish to split with the investor: '))
+                            invest_percentage = int(raw_input('Enter what'
+                                                              ' percentage you wish to split with the investor: '))
                             if invest_percentage not in range(0, 101):
                                 print 'Must be a number between 0 and 100'
                             else:

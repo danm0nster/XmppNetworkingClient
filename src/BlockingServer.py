@@ -8,7 +8,7 @@ class BlockingServer(object):
         # Username is the first part of the JID it will use
         self.username = 'server'
         # Domain name of the server
-        self.domain = 'YLGW036484'
+        self.domain = 'YLGW036487'
         # Port number to connect to, 5222 is default
         self.port = 5222
 
@@ -29,18 +29,6 @@ class BlockingServer(object):
 
     # given a dictionary calculates if it has the same amount of entries as the shortest list of participant types
     def _have_all_responses(self, dict):
-        """Method to see if all responses have been received yet
-
-        It accomplishes this by comparing the length of the dictionary to the length of the
-        smallest list of participants.
-
-        Args:
-            dict: Instance of a dictionary containing responses
-
-        Returns:
-            bool: True or False depending on result
-
-        """
         if len(self.investor_list) <= len(self.trust_fund_list):
             if len(dict) == len(self.investor_list):
                 return True
@@ -56,13 +44,13 @@ class BlockingServer(object):
             if self.network.check_for_messages():
                 msg = self.network.pop_message()
                 # check if a investor registers
-                if msg.getBody().find('--register:investor') is not -1:
+                if msg.body.find('--register:investor') is not -1:
                     print "adding investor"
-                    self.investor_list.append(msg.getFrom())
+                    self.investor_list.append(msg.sender)
                 # checks if a trust fund registers
-                elif msg.getBody().find('register:trustfund') is not -1:
+                elif msg.body.find('register:trustfund') is not -1:
                     print "adding trustfund"
-                    self.trust_fund_list.append(msg.getFrom())
+                    self.trust_fund_list.append(msg.sender)
                 # my start condition, in this case it's the number of players
                 if len(self.investor_list) + len(self.trust_fund_list) == 4:
                     self.state = "pairing"
@@ -78,7 +66,6 @@ class BlockingServer(object):
 
             # sending information to clients about their pairings
             for investor in self.investor_trust_fund_pairing:
-                # TODO remove test print or atleast make them optional
                 print str(investor) + "\tmatched with:\t" + str(self.investor_trust_fund_pairing[investor])
                 self.network.send_message(to=investor, sender=self.network.id(), message='--paired:' + str(self.investor_trust_fund_pairing[investor]))
                 self.network.send_message(to=self.investor_trust_fund_pairing[investor], sender=self.network.id(), message='--paired:' + str(investor))
@@ -92,14 +79,13 @@ class BlockingServer(object):
         # clearing the response dictionary before use
         self.response_dict = {}
         # waiting for responses from investors
-        # TODO test prints
         print 'getting investments'
         while self.state == 'wait':
             if self.network.check_for_messages():
                 msg = self.network.pop_message()
-                if msg.getBody().find('--investor:invest') is not -1:
-                    investor = msg.getFrom()
-                    investment = msg.getBody().lstrip('--investor:invest')
+                if msg.body.find('--investor:invest') is not -1:
+                    investor = msg.sender
+                    investment = msg.body.lstrip('--investor:invest')
                     self.response_dict[investor] = investment
                     print investor, 'invested: ', investment
                     # when all investors have responded change state
@@ -124,11 +110,11 @@ class BlockingServer(object):
         while self.state == 'trustfunds_shared':
             if self.network.check_for_messages():
                 msg = self.network.pop_message()
-                if msg.getBody().find('--trustfund_pay:') is not -1:
+                if msg.body.find('--trustfund_pay:') is not -1:
                     # switching keys and values in the pairing dictionary, to find the trust fund -> invester link
                     trustfund_pairing_dict = dict((tru, inv) for inv, tru in self.investor_trust_fund_pairing.iteritems())
-                    investor = trustfund_pairing_dict[msg.getFrom()]
-                    self.response_dict[investor] = msg.getBody().lstrip('--trustfund_pay:')
+                    investor = trustfund_pairing_dict[msg.sender]
+                    self.response_dict[investor] = msg.body.lstrip('--trustfund_pay:')
                     if self._have_all_responses(self.response_dict):
                         print 'received all responses, sending payment to investors'
                         for investor in self.response_dict:

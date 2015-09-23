@@ -9,7 +9,7 @@ class PresenceServer(object):
         # Username is the first part of the JID it will use
         self.username = 'server'
         # Domain name of the server
-        self.domain = 'YLGW036484'
+        self.domain = 'YLGW036487'
         # Port number to connect to, 5222 is default
         self.port = 5222
 
@@ -22,7 +22,11 @@ class PresenceServer(object):
                 # changes subscription behaviour, notice the lack of ()
                 # this is important since we do not want to invoke it yet
                 self.network.set_subscription_validator(self.server_subscription_acceptance)
-                self.network.set_subscription_validator("lol")
+                # Changes the disconnect handler to the given function.
+                # Again make sure not to invoke the function by not giving it the ()<br />
+                # It only fires on unexpected disconnects,
+                # #meaning a client calling the disconnect function won't call this.
+                self.network.set_disconnect_handler(self.server_disconnect_handler)
         else:
             # if no tls connection could be made, print a message and exit the program
             print 'could not open tls connection'
@@ -35,7 +39,6 @@ class PresenceServer(object):
         # since it will be a Jabber ID instance, we have to stringfy it. <br />
         # This means that the server will only know the status from test1 and test2.<br />
         # Therefore it will only send subscriber information to those 2.
-        # But both test1, test2, test3 and test4 will know of the serves status
         match = re.search('test[1^2]', str(jid))
         # if a match is found we allow the subscription and subscribe back
         if match:
@@ -44,15 +47,23 @@ class PresenceServer(object):
             # if a match is not found, we allow the subscription but do not subscribe back
             return (True, False)
 
+    # Function to handle a client disconnect from the "server" side
+    def server_disconnect_handler(self):
+        # As a test I just make it print out a message.
+        # This is where you would make code that makes sure everything will still work even if someone disconnects
+        print 'A client disconnected'
+
 if __name__ == '__main__':
     server = PresenceServer()
     # waits until it has 2 subscribers
-    while len(server.network.get_subscriptions_from_self()) != 2:
+    while len(server.network.get_subscriptions_from_self()) != 1:
         # using this to avoid excessive cpu use while doing nothing
         time.sleep(0.1)
-    server.network.send_presence(username='test1', domain='YLGW036484', typ="TRYING STUFF LOL")
-    time.sleep(2)
     # sending a message to everyone that the server has a subscription to
+    print 'sending messages'
     server.network.send_mass_messages(server.network.get_subscriptions_from_self(), server.network.id(), 'test message')
+    # If testing for the disconnect functions, set the sleep time to something high
+    # and disconnect either server or client while sleeping
+    time.sleep(40)
     # raw_input is just here to keep the program running
     raw_input('end')

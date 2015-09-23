@@ -5,6 +5,11 @@ import Queue
 
 
 class NetworkingClient(object):
+    """ Class for interacting with the xmpp networking
+
+    Each instance of this object will hold the connection to one xmpp server
+
+    """
     def __init__(self, server=None, port=5222):
         self.server = server
         self.port = port
@@ -85,7 +90,7 @@ class NetworkingClient(object):
         It will sleep for 1 second before calling for the disconnect, due to
         compatibility with older xmpp servers
         """
-        # sleeping 1 sec before disconnect, this removes errors that can happen on older servers
+        self.send_presence(typ=u'FlagOffline')
         time.sleep(1)
         self.client.disconnect()
 
@@ -143,8 +148,8 @@ class NetworkingClient(object):
         return str(self.jid)
 
     def _blocking_listen(self, timeout=1.0):
-        # TODO maybe remove busy waiting
         while True:
+            time.sleep(0.01)
             self.client.Process(timeout)
 
     def _start_listening(self):
@@ -164,21 +169,20 @@ class NetworkingClient(object):
         result = not self.messages.empty()
         return result
 
-    # TODO return a custom message class or something similar
     def pop_message(self):
         """returns the oldest message
 
         pops a message from the underlying FIFO queue, thread safe.
 
         Returns:
-            string: returns a message, None if there are no messages
+            Message: returns a message, None if there are no messages
         """
         try:
             result = self.messages.get()
         except Queue.Empty:
             return None
         else:
-            return result
+            return Message(body=result.getBody(), subject=result.getBody(), sender=result.getFrom())
 
     def send_presence(self, typ=None, jid=None, username=None, domain=None):
         """ Sends a presence to a specified user or everyone in roster that has a subscription for it
@@ -199,7 +203,7 @@ class NetworkingClient(object):
         elif username is not None and domain is not None:
             self.client.send(xmpp.Presence(xmpp.JID(node=username, domain=domain), typ))
         else:
-            for jid in self.get_subscriptions_from_self():
+            for jid in self.get_subscriptions_to_self():
                 self.client.send(xmpp.Presence(jid, typ))
 
     # ################### Roster method callers ###################
@@ -240,6 +244,10 @@ class NetworkingClient(object):
     def subscribe(self, jid=None, username=None, domain=None):
         """ Subscribes to the given Jabber ID
 
+        If the other user allows it, you will be subscribed to their online presence,
+        This means that when they are online you will have them in your roster.
+        You can push messages to anyone who is in your roster and online.
+
         If jid is given username and domain will not be used.
         If no jid is provided it will use the username and domain given.
 
@@ -261,7 +269,11 @@ class NetworkingClient(object):
             username(string): Used together with domain to send unsubscription
             domain(string) Used together with username to send unsubscription
         """
-        return self._roster.unsubscribe(jid=jid, username=username, domain=domain)
+        if jid is not None:
+            self._pres_manager.flag_offline(jid)
+        elif username is not None and domain is not None:
+            self._pres_manager.flag_offline(xmpp.JID(node=username, domain=domain))
+        self._roster.unsubscribe(jid=jid, username=username, domain=domain)
 
     # internal class for handling the roster
     class _RosterManager(object):
@@ -316,7 +328,10 @@ class NetworkingClient(object):
 
         # used for removing a jid from memory when unsubscribed
         def _remove(self, jid):
-            jid = jid.getStripped()
+            try:
+                jid = jid.getStripped()
+            except AttributeError:
+                pass
             if jid in self._online_roster['to']:
                 self._online_roster['to'].remove(jid)
             if jid in self._online_roster['from']:
@@ -351,6 +366,20 @@ class NetworkingClient(object):
         """
         self._pres_manager.set_subscription_validator(function)
 
+    def set_disconnect_handler(self, function):
+        """ Given a function, set it's as the disconnect handler
+
+        This function will be called whenever someone you are subscribed to disconnects.
+        If someone is subscribed to you, but you are not subscribed to them, and they disconnect this function
+        will not be called.
+
+        If someone shuts down cleanly by calling the disconnect method. The disconnect function will not be called.
+
+        Args:
+            function(function): The function to be called when a disconnect happens
+        """
+        self._pres_manager.set_disconnect_handler(function)
+
     class _PresenceManager(object):
         """ Internal class for handing presence
         """
@@ -358,12 +387,16 @@ class NetworkingClient(object):
             self.roster = roster
             self.client = client
             self._subscription_validator = self._subscription_validator_func
+            self._disconnect_handler = None
+            self._offline_flags = {}
 
         def _on_presence(self, dispatcher, pres):
+            print pres
             name = pres.getFrom()
+            name = name.getStripped()
 
             if pres.getType() is None:
-                self.roster._on_contact_online(name.getStripped())
+                self.roster._on_contact_online(name)
             elif pres.getType() == 'subscribe':
                 # tries the given validator function, if it isn't a function it will revert to the default function
                 try:
@@ -374,26 +407,50 @@ class NetworkingClient(object):
                     self.client.send(xmpp.Presence(typ='subscribed', to=name))
                 if validator[1] is True:
                     self.client.send(xmpp.Presence(typ='subscribe', to=name))
+
             elif pres.getType() == 'unsubscribe':
                 self.client.send(xmpp.Presence(typ='unsubscribed', to=name))
 
-            # TODO disconnect handler here
+            elif pres.getType() == 'FlagOffline':
+                self._offline_flags[name] = None
+
             elif pres.getType() == 'unavailable':
+                # Remove name from online roster
                 try:
                     self.roster._remove(name)
                 except ValueError:
                     pass
+                # check if we have received a flag for clean disconnect
+                if name in self._offline_flags:
+                    try:
+                        self._offline_flags.pop(name)
+                    except KeyError:
+                        pass
+                else:
+                    # if not try to call disconnect handler
+                    try:
+                        self._disconnect_handler()
+                    except TypeError:
+                        pass
+
             elif pres.getType() == 'unsubscribed':
                 try:
                     self.roster._remove(name)
                 except ValueError:
                     pass
 
+        def set_disconnect_handler(self, function):
+            self._disconnect_handler = function
+
+        def flag_offline(self, jid):
+            jid = jid.lower()
+            self._offline_flags[jid] = None
+
         def _subscription_validator_func(self, jid):
             return (True, True)
 
-        def set_subscription_validator(self, function_pointer):
-            self._subscription_validator = function_pointer
+        def set_subscription_validator(self, function):
+            self._subscription_validator = function
 
     class _IQHandler(object):
         """ Internal class for limited handling of IQ stanza's
@@ -415,3 +472,19 @@ class NetworkingClient(object):
                 elif item.getAttr('subscription') == 'from':
                     self.roster._append_to_total(jid, 'from')
             raise xmpp.NodeProcessed  # <-- must be there for underlying control of flow
+
+
+class Message(object):
+    """ Message from the network
+
+    For making network messages from the network.
+
+    Attributes:
+        body(string): The body of the message
+        subject(string): The subject of the message
+        Sender(JID): The Jabber ID of who sent the message
+    """
+    def __init__(self, body="", subject="", sender=None):
+        self.body = body
+        self.subject = subject
+        self.sender = sender
